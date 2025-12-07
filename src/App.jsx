@@ -31,7 +31,8 @@ import {
   Shield,
   ShieldCheck,
   Loader2,
-  ArrowDownCircle, // New Icon for Receiving
+  Hash,            // For Smart Counting options
+  ArrowDownCircle  // For Stock Receiving
 } from 'lucide-react';
 
 import { initializeApp, getApps, getApp } from 'firebase/app';
@@ -59,7 +60,8 @@ import {
   limit,
 } from 'firebase/firestore';
 
-// --- YOUR MOZZINVENT KEYS ---
+// --- CONFIGURATION ---
+// ⚠️ YOUR KEYS ARE PRESERVED HERE
 const firebaseConfig = {
   apiKey: 'AIzaSyBI0XhRV9aSivFBnEMoFgLqux1WfMvn0sQ',
   authDomain: 'mozzinvent.firebaseapp.com',
@@ -69,7 +71,7 @@ const firebaseConfig = {
   appId: '1:382778875688:web:2ea29da2e91847191bba1d',
 };
 
-// Initialize Firebase (Crash-Proof)
+// Initialize Firebase
 let app;
 try {
   if (!getApps().length) {
@@ -83,14 +85,10 @@ try {
 
 const auth = getAuth(app);
 const db = getFirestore(app);
-
-// --- Configuration ---
 const ORG_ID = 'my-restaurant';
 
 const Card = ({ children, className = '' }) => (
-  <div
-    className={`bg-white rounded-xl shadow-sm border border-slate-200 ${className}`}
-  >
+  <div className={`bg-white rounded-xl shadow-sm border border-slate-200 ${className}`}>
     {children}
   </div>
 );
@@ -111,23 +109,14 @@ const AuthScreen = () => {
       if (isLogin) {
         await signInWithEmailAndPassword(auth, email, password);
       } else {
-        const userCred = await createUserWithEmailAndPassword(
-          auth,
-          email,
-          password
-        );
-        const usersSnapshot = await getDocs(
-          query(collection(db, `organizations/${ORG_ID}/users`), limit(1))
-        );
+        const userCred = await createUserWithEmailAndPassword(auth, email, password);
+        const usersSnapshot = await getDocs(query(collection(db, `organizations/${ORG_ID}/users`), limit(1)));
         const isFirstUser = usersSnapshot.empty;
-        await setDoc(
-          doc(db, `organizations/${ORG_ID}/users`, userCred.user.uid),
-          {
-            email: email,
-            role: isFirstUser ? 'owner' : 'staff',
-            createdAt: serverTimestamp(),
-          }
-        );
+        await setDoc(doc(db, `organizations/${ORG_ID}/users`, userCred.user.uid), {
+          email: email,
+          role: isFirstUser ? 'owner' : 'staff',
+          createdAt: serverTimestamp(),
+        });
       }
     } catch (err) {
       setError(err.message.replace('Firebase: ', ''));
@@ -149,60 +138,82 @@ const AuthScreen = () => {
         </div>
         <form onSubmit={handleAuth} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
-              Email
-            </label>
-            <input
-              type="email"
-              required
-              className="w-full p-3 border rounded-lg"
-              placeholder="admin@restaurant.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
+            <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
+            <input type="email" required className="w-full p-3 border rounded-lg" placeholder="admin@restaurant.com" value={email} onChange={(e) => setEmail(e.target.value)} />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
-              Password
-            </label>
-            <input
-              type="password"
-              required
-              className="w-full p-3 border rounded-lg"
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
+            <label className="block text-sm font-medium text-slate-700 mb-1">Password</label>
+            <input type="password" required className="w-full p-3 border rounded-lg" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} />
           </div>
-          {error && (
-            <div className="p-3 bg-red-50 text-red-600 text-sm rounded-lg flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4" /> {error}
-            </div>
-          )}
-          <button
-            disabled={loading}
-            className="w-full bg-slate-900 text-white py-3 rounded-lg font-bold hover:bg-slate-800 transition flex justify-center"
-          >
-            {loading ? (
-              <Loader2 className="animate-spin" />
-            ) : isLogin ? (
-              'Sign In'
-            ) : (
-              'Create Account'
-            )}
+          {error && <div className="p-3 bg-red-50 text-red-600 text-sm rounded-lg flex items-center gap-2"><AlertTriangle className="w-4 h-4" /> {error}</div>}
+          <button disabled={loading} className="w-full bg-slate-900 text-white py-3 rounded-lg font-bold hover:bg-slate-800 transition flex justify-center">
+            {loading ? <Loader2 className="animate-spin" /> : isLogin ? 'Sign In' : 'Create Account'}
           </button>
         </form>
         <div className="mt-6 text-center">
-          <button
-            onClick={() => setIsLogin(!isLogin)}
-            className="text-sm text-blue-600 hover:underline"
-          >
-            {isLogin
-              ? 'Need an account? Sign Up'
-              : 'Already have an account? Sign In'}
+          <button onClick={() => setIsLogin(!isLogin)} className="text-sm text-blue-600 hover:underline">
+            {isLogin ? 'Need an account? Sign Up' : 'Already have an account? Sign In'}
           </button>
         </div>
       </Card>
+    </div>
+  );
+};
+
+// --- SUB-COMPONENT: SMART COUNTER ---
+const SmartCounter = ({ item, onCountChange }) => {
+  const [subCounts, setSubCounts] = useState({});
+  const [baseCount, setBaseCount] = useState('');
+
+  useEffect(() => {
+    let total = Number(baseCount) || 0;
+    // Safety check for undefined subUnits
+    if (item?.subUnits && Array.isArray(item.subUnits)) {
+      item.subUnits.forEach(sub => {
+        const qty = Number(subCounts[sub.name]) || 0;
+        total += qty * (Number(sub.value) || 0);
+      });
+    }
+    onCountChange(total);
+  }, [subCounts, baseCount]);
+
+  if (!item?.subUnits || !Array.isArray(item.subUnits) || item.subUnits.length === 0) {
+    return (
+      <input
+        type="number"
+        className="border w-24 p-2 rounded text-center font-bold"
+        placeholder="0"
+        value={baseCount}
+        onChange={(e) => setBaseCount(e.target.value)}
+      />
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-2 min-w-[200px]">
+      <div className="flex flex-wrap gap-2 justify-end">
+        {item.subUnits.map((sub, idx) => (
+          <div key={idx} className="flex flex-col items-center">
+            <span className="text-[10px] text-slate-500 uppercase font-bold">{sub.name}</span>
+            <input
+              type="number"
+              className="border border-blue-200 bg-blue-50 w-20 p-1 rounded text-center text-sm"
+              placeholder="0"
+              onChange={(e) => setSubCounts({...subCounts, [sub.name]: e.target.value})}
+            />
+          </div>
+        ))}
+      </div>
+      <div className="flex items-center justify-end gap-2">
+        <span className="text-[10px] text-slate-400">LOOSE ({item.unit})</span>
+        <input
+          type="number"
+          className="border w-20 p-1 rounded text-center text-sm"
+          placeholder="0"
+          value={baseCount}
+          onChange={(e) => setBaseCount(e.target.value)}
+        />
+      </div>
     </div>
   );
 };
@@ -213,7 +224,6 @@ export default function RestaurantInventoryApp() {
   const [userRole, setUserRole] = useState(null);
   const [activeTab, setActiveTab] = useState('inventory');
 
-  // Data State
   const [inventory, setInventory] = useState([]);
   const [menuItems, setMenuItems] = useState([]);
   const [recipes, setRecipes] = useState([]);
@@ -222,7 +232,6 @@ export default function RestaurantInventoryApp() {
   const [appUsers, setAppUsers] = useState([]);
   const [loadingMsg, setLoadingMsg] = useState('');
 
-  // --- Listeners ---
   useEffect(() => {
     if (!auth) return;
     const unsub = onAuthStateChanged(auth, async (u) => {
@@ -233,18 +242,12 @@ export default function RestaurantInventoryApp() {
           const unsubRole = onSnapshot(userRef, (docSnap) => {
             if (docSnap.exists()) setUserRole(docSnap.data().role);
             else {
-              setDoc(userRef, {
-                email: u.email,
-                role: 'staff',
-                createdAt: serverTimestamp(),
-              });
+              setDoc(userRef, { email: u.email, role: 'staff', createdAt: serverTimestamp() });
               setUserRole('staff');
             }
           });
           return () => unsubRole();
-        } catch (e) {
-          console.log('Role fetch error', e);
-        }
+        } catch (e) { console.log('Role error', e); }
       } else {
         setUser(null);
         setUserRole(null);
@@ -256,49 +259,22 @@ export default function RestaurantInventoryApp() {
   useEffect(() => {
     if (!user || !db) return;
     const basePath = `organizations/${ORG_ID}`;
-    const unsubInv = onSnapshot(collection(db, `${basePath}/inventory`), (s) =>
-      setInventory(s.docs.map((d) => ({ id: d.id, ...d.data() })))
-    );
-    const unsubMenu = onSnapshot(collection(db, `${basePath}/menu`), (s) =>
-      setMenuItems(s.docs.map((d) => ({ id: d.id, ...d.data() })))
-    );
-    const unsubRecipes = onSnapshot(
-      collection(db, `${basePath}/recipes`),
-      (s) => setRecipes(s.docs.map((d) => ({ id: d.id, ...d.data() })))
-    );
-    const unsubStaff = onSnapshot(collection(db, `${basePath}/staff`), (s) =>
-      setStaffList(s.docs.map((d) => ({ id: d.id, ...d.data() })))
-    );
-    const unsubLogs = onSnapshot(
-      query(collection(db, `${basePath}/logs`), orderBy('createdAt', 'desc')),
-      (s) => setLogs(s.docs.map((d) => ({ id: d.id, ...d.data() })))
-    );
-
-    let unsubAppUsers = () => {};
+    const unsubs = [
+      onSnapshot(collection(db, `${basePath}/inventory`), (s) => setInventory(s.docs.map((d) => ({ id: d.id, ...d.data() })))),
+      onSnapshot(collection(db, `${basePath}/menu`), (s) => setMenuItems(s.docs.map((d) => ({ id: d.id, ...d.data() })))),
+      onSnapshot(collection(db, `${basePath}/recipes`), (s) => setRecipes(s.docs.map((d) => ({ id: d.id, ...d.data() })))),
+      onSnapshot(collection(db, `${basePath}/staff`), (s) => setStaffList(s.docs.map((d) => ({ id: d.id, ...d.data() })))),
+      onSnapshot(query(collection(db, `${basePath}/logs`), orderBy('createdAt', 'desc')), (s) => setLogs(s.docs.map((d) => ({ id: d.id, ...d.data() }))))
+    ];
     if (userRole === 'owner') {
-      unsubAppUsers = onSnapshot(collection(db, `${basePath}/users`), (s) =>
-        setAppUsers(s.docs.map((d) => ({ id: d.id, ...d.data() })))
-      );
+      unsubs.push(onSnapshot(collection(db, `${basePath}/users`), (s) => setAppUsers(s.docs.map((d) => ({ id: d.id, ...d.data() })))));
     }
-
-    return () => {
-      unsubInv();
-      unsubMenu();
-      unsubRecipes();
-      unsubStaff();
-      unsubLogs();
-      unsubAppUsers();
-    };
+    return () => unsubs.forEach(u => u());
   }, [user, userRole]);
 
-  // --- Actions ---
   const addLog = async (type, message, staffName = user?.email) => {
     await addDoc(collection(db, `organizations/${ORG_ID}/logs`), {
-      type,
-      message,
-      user: staffName,
-      date: new Date().toLocaleString(),
-      createdAt: serverTimestamp(),
+      type, message, user: staffName, date: new Date().toLocaleString(), createdAt: serverTimestamp()
     });
   };
 
@@ -319,241 +295,62 @@ export default function RestaurantInventoryApp() {
     setLoadingMsg('');
   };
 
-  // --- 1. Staff ---
-  const StaffView = () => {
-    const [name, setName] = useState('');
-    const [role, setRole] = useState('Staff');
-    const handleAddStaff = async () => {
-      if (!name) return;
-      await addDoc(collection(db, `organizations/${ORG_ID}/staff`), {
-        name,
-        role,
-        createdAt: serverTimestamp(),
-      });
-      setName('');
-    };
-    const handleDeleteStaff = async (id, name) => {
-      if (confirm(`Remove ${name}?`))
-        await deleteDoc(doc(db, `organizations/${ORG_ID}/staff`, id));
-    };
-    const toggleUserRole = async (userId, currentRole) => {
-      const newRole = currentRole === 'owner' ? 'staff' : 'owner';
-      if (confirm(`Change role to ${newRole.toUpperCase()}?`))
-        await updateDoc(doc(db, `organizations/${ORG_ID}/users`, userId), {
-          role: newRole,
-        });
-    };
-
-    return (
-      <div className="space-y-6">
-        {userRole === 'owner' && (
-          <Card className="p-6 border-l-4 border-purple-500 bg-purple-50">
-            <h3 className="font-bold mb-4 text-purple-900 flex items-center gap-2">
-              <ShieldCheck className="w-5 h-5" /> App Admins
-            </h3>
-            <div className="overflow-x-auto bg-white rounded-lg border">
-              <table className="w-full text-left text-sm">
-                <thead className="bg-slate-50">
-                  <tr>
-                    <th className="p-3">Email</th>
-                    <th className="p-3">Role</th>
-                    <th className="p-3 text-right">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {appUsers.map((u) => (
-                    <tr key={u.id} className="border-b">
-                      <td className="p-3">
-                        {u.email}{' '}
-                        {u.email === user.email && (
-                          <span className="text-slate-400">(You)</span>
-                        )}
-                      </td>
-                      <td className="p-3">
-                        <span
-                          className={`px-2 py-1 rounded text-xs font-bold uppercase ${
-                            u.role === 'owner'
-                              ? 'bg-purple-100 text-purple-700'
-                              : 'bg-slate-100 text-slate-700'
-                          }`}
-                        >
-                          {u.role}
-                        </span>
-                      </td>
-                      <td className="p-3 text-right">
-                        {u.email !== user.email && (
-                          <button
-                            onClick={() => toggleUserRole(u.id, u.role)}
-                            className="text-blue-600 hover:underline text-xs"
-                          >
-                            Switch Role
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Card>
-        )}
-        <Card className="p-6">
-          <h3 className="font-bold mb-4 text-slate-800 flex items-center gap-2">
-            <Users className="w-5 h-5" /> Staff List (For Stock Takes)
-          </h3>
-          <div className="flex gap-2 mb-4">
-            <input
-              className="border p-2 rounded flex-1"
-              placeholder="Name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-            <select
-              className="border p-2 rounded"
-              value={role}
-              onChange={(e) => setRole(e.target.value)}
-            >
-              <option>Staff</option>
-              <option>Manager</option>
-              <option>Chef</option>
-            </select>
-            <button
-              onClick={handleAddStaff}
-              className="bg-slate-800 text-white px-4 rounded font-bold"
-            >
-              Add
-            </button>
-          </div>
-          <div className="overflow-hidden border rounded-lg">
-            <table className="w-full text-left">
-              <thead className="bg-slate-50 text-slate-500 text-sm">
-                <tr>
-                  <th className="p-3">Name</th>
-                  <th className="p-3">Role</th>
-                  <th className="p-3 text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {staffList.length === 0 ? (
-                  <tr>
-                    <td colSpan="3" className="p-6 text-center text-slate-400">
-                      No staff added yet.
-                    </td>
-                  </tr>
-                ) : (
-                  staffList.map((s) => (
-                    <tr key={s.id} className="border-b text-sm">
-                      <td className="p-3 font-bold">{s.name}</td>
-                      <td className="p-3">
-                        <span className="bg-blue-50 text-blue-600 text-xs px-2 py-1 rounded-full">
-                          {s.role}
-                        </span>
-                      </td>
-                      <td className="p-3 text-right">
-                        {userRole === 'owner' && (
-                          <button
-                            onClick={() => handleDeleteStaff(s.id, s.name)}
-                            className="text-red-500 hover:bg-red-50 p-2 rounded"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-      </div>
-    );
-  };
-
-  // 2. Dashboard
+  // --- VIEWS ---
   const Dashboard = () => {
     const lowStockItems = inventory.filter((i) => i.quantity <= i.threshold);
-    const totalValue = inventory.reduce(
-      (acc, item) => acc + item.quantity * (item.cost || 0),
-      0
-    );
+    const totalValue = inventory.reduce((acc, item) => acc + item.quantity * (item.cost || 0), 0);
     return (
       <div className="space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Card className="p-6 border-l-4 border-blue-500">
-            <h3 className="text-slate-500 text-sm font-medium">
-              Total Menu Items
-            </h3>
-            <p className="text-3xl font-bold text-slate-800">
-              {menuItems.length}
-            </p>
-            {menuItems.length === 0 && !loadingMsg && (
-              <button
-                onClick={loadInitialMenu}
-                className="text-xs bg-blue-100 text-blue-700 px-3 py-1 rounded-full mt-2 hover:bg-blue-200 transition font-bold"
-              >
-                Load Menu
-              </button>
-            )}
+            <h3 className="text-slate-500 text-sm font-medium">Total Menu Items</h3>
+            <p className="text-3xl font-bold text-slate-800">{menuItems.length}</p>
           </Card>
           <Card className="p-6 border-l-4 border-green-500">
-            <h3 className="text-slate-500 text-sm font-medium">
-              Inventory Value
-            </h3>
-            <p className="text-3xl font-bold text-slate-800">
-              ${totalValue.toLocaleString()}
-            </p>
+            <h3 className="text-slate-500 text-sm font-medium">Inventory Value</h3>
+            <p className="text-3xl font-bold text-slate-800">${totalValue.toLocaleString()}</p>
           </Card>
-          <Card
-            className={`p-6 border-l-4 ${
-              lowStockItems.length > 0 ? 'border-red-500' : 'border-slate-300'
-            }`}
-          >
-            <h3 className="text-slate-500 text-sm font-medium">
-              Items to Order
-            </h3>
-            <p
-              className={`text-3xl font-bold ${
-                lowStockItems.length > 0 ? 'text-red-600' : 'text-slate-800'
-              }`}
-            >
-              {lowStockItems.length}
-            </p>
+          <Card className={`p-6 border-l-4 ${lowStockItems.length > 0 ? 'border-red-500' : 'border-slate-300'}`}>
+            <h3 className="text-slate-500 text-sm font-medium">Items to Order</h3>
+            <p className={`text-3xl font-bold ${lowStockItems.length > 0 ? 'text-red-600' : 'text-slate-800'}`}>{lowStockItems.length}</p>
           </Card>
         </div>
         {lowStockItems.length > 0 && (
           <div className="bg-red-50 border border-red-200 rounded-xl p-6 flex justify-between items-center">
             <div>
-              <h3 className="text-lg font-bold text-red-700 flex items-center gap-2">
-                <AlertTriangle className="w-5 h-5" /> Stock Alert
-              </h3>
-              <p className="text-red-600 text-sm">
-                You have {lowStockItems.length} items below MOQ.
-              </p>
+              <h3 className="text-lg font-bold text-red-700 flex items-center gap-2"><AlertTriangle className="w-5 h-5" /> Stock Alert</h3>
+              <p className="text-red-600 text-sm">You have {lowStockItems.length} items below MOQ.</p>
             </div>
-            <button
-              onClick={() => setActiveTab('ordersheet')}
-              className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-bold shadow-sm transition"
-            >
-              View Order Sheet
-            </button>
+            <button onClick={() => setActiveTab('ordersheet')} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-bold shadow-sm transition">View Order Sheet</button>
           </div>
         )}
       </div>
     );
   };
 
-  // 3. Inventory
   const InventoryView = () => {
-    const [formData, setFormData] = useState({
-      name: '',
-      unit: 'pcs',
-      quantity: 0,
-      threshold: 0,
-      cost: 0,
-    });
+    const [formData, setFormData] = useState({ name: '', unit: 'g', quantity: 0, threshold: 0, cost: 0, subUnits: [] });
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [editingId, setEditingId] = useState(null);
+    const [tempSubName, setTempSubName] = useState('');
+    const [tempSubValue, setTempSubValue] = useState('');
+
+    const addSubUnit = () => {
+      if(!tempSubName || !tempSubValue) return;
+      setFormData({
+        ...formData,
+        subUnits: [...(formData.subUnits || []), { name: tempSubName, value: Number(tempSubValue) }]
+      });
+      setTempSubName('');
+      setTempSubValue('');
+    };
+
+    const removeSubUnit = (idx) => {
+      const updated = [...(formData.subUnits || [])];
+      updated.splice(idx, 1);
+      setFormData({...formData, subUnits: updated});
+    };
+
     const handleSaveItem = async () => {
       if (!formData.name) return;
       const data = {
@@ -562,124 +359,73 @@ export default function RestaurantInventoryApp() {
         quantity: Number(formData.quantity),
         threshold: Number(formData.threshold),
         cost: Number(formData.cost),
+        subUnits: formData.subUnits || []
       };
       if (editingId) {
-        await updateDoc(
-          doc(db, `organizations/${ORG_ID}/inventory`, editingId),
-          data
-        );
+        await updateDoc(doc(db, `organizations/${ORG_ID}/inventory`, editingId), data);
         addLog('inventory', `Updated: ${formData.name}`);
       } else {
         await addDoc(collection(db, `organizations/${ORG_ID}/inventory`), data);
         addLog('inventory', `Added: ${formData.name}`);
       }
-      setFormData({
-        name: '',
-        unit: 'pcs',
-        quantity: 0,
-        threshold: 0,
-        cost: 0,
-      });
+      setFormData({ name: '', unit: 'g', quantity: 0, threshold: 0, cost: 0, subUnits: [] });
       setIsFormOpen(false);
       setEditingId(null);
     };
+
     const handleDeleteClick = async (item) => {
-      if (userRole !== 'owner') return alert('Only Owners can delete items.');
-      if (confirm(`Delete ${item.name}?`)) {
-        await deleteDoc(doc(db, `organizations/${ORG_ID}/inventory`, item.id));
-        addLog('inventory', `Deleted: ${item.name}`);
-      }
+        if (userRole !== 'owner') return alert('Only Owners can delete items.');
+        if (confirm(`Delete ${item.name}?`)) {
+          await deleteDoc(doc(db, `organizations/${ORG_ID}/inventory`, item.id));
+          addLog('inventory', `Deleted: ${item.name}`);
+        }
     };
+
     return (
       <div className="space-y-6">
         <div className="flex justify-between items-center">
           <h2 className="text-2xl font-bold text-slate-800">Raw Inventory</h2>
           {!isFormOpen && (
-            <button
-              onClick={() => setIsFormOpen(true)}
-              className="bg-slate-800 text-white px-4 py-2 rounded-lg flex items-center gap-2"
-            >
+            <button onClick={() => setIsFormOpen(true)} className="bg-slate-800 text-white px-4 py-2 rounded-lg flex items-center gap-2">
               <Plus className="w-4 h-4" /> Add Item
             </button>
           )}
         </div>
         {isFormOpen && (
-          <Card className="p-6 bg-slate-50">
-            <div className="grid grid-cols-2 md:grid-cols-7 gap-4 items-end">
-              <div className="col-span-2">
-                <label className="text-xs font-bold">Name</label>
-                <input
-                  className="w-full p-2 border rounded"
-                  value={formData.name}
-                  onChange={(e) =>
-                    setFormData({ ...formData, name: e.target.value })
-                  }
-                />
+          <Card className="p-6 bg-slate-50 border-2 border-slate-200">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-4">
+                <h3 className="font-bold text-slate-500 uppercase text-xs">Basic Info</h3>
+                <div><label className="text-xs font-bold">Name</label><input className="w-full p-2 border rounded" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} /></div>
+                <div className="grid grid-cols-2 gap-2">
+                    <div><label className="text-xs font-bold">Unit</label><input className="w-full p-2 border rounded" placeholder="e.g. g, ml, pcs" value={formData.unit} onChange={(e) => setFormData({ ...formData, unit: e.target.value })} /></div>
+                    <div><label className="text-xs font-bold">Current Stock</label><input type="number" className="w-full p-2 border rounded" value={formData.quantity} onChange={(e) => setFormData({ ...formData, quantity: e.target.value })} /></div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                    <div><label className="text-xs font-bold text-blue-600">MOQ (Alert)</label><input type="number" className="w-full p-2 border border-blue-200 rounded" value={formData.threshold} onChange={(e) => setFormData({ ...formData, threshold: e.target.value })} /></div>
+                    <div><label className="text-xs font-bold">Cost</label><input type="number" className="w-full p-2 border rounded" value={formData.cost} onChange={(e) => setFormData({ ...formData, cost: e.target.value })} /></div>
+                </div>
               </div>
-              <div>
-                <label className="text-xs font-bold">Unit</label>
-                <select
-                  className="w-full p-2 border rounded"
-                  value={formData.unit}
-                  onChange={(e) =>
-                    setFormData({ ...formData, unit: e.target.value })
-                  }
-                >
-                  <option value="pcs">pcs</option>
-                  <option value="kg">kg</option>
-                  <option value="g">g</option>
-                  <option value="ml">ml</option>
-                  <option value="L">L</option>
-                  <option value="bottle">bottle</option>
-                </select>
+              <div className="space-y-4 bg-white p-4 rounded-lg border border-slate-200">
+                <h3 className="font-bold text-slate-500 uppercase text-xs flex items-center gap-2"><Hash className="w-4 h-4" /> Counting Options (Optional)</h3>
+                <div className="flex gap-2">
+                    <input className="flex-1 border rounded p-2 text-sm" placeholder="Name (e.g. Big Block)" value={tempSubName} onChange={e => setTempSubName(e.target.value)} />
+                    <input type="number" className="w-20 border rounded p-2 text-sm" placeholder="Value" value={tempSubValue} onChange={e => setTempSubValue(e.target.value)} />
+                    <button onClick={addSubUnit} className="bg-blue-100 text-blue-600 p-2 rounded hover:bg-blue-200"><Plus className="w-4 h-4" /></button>
+                </div>
+                <div className="space-y-2">
+                    {(formData.subUnits || []).map((sub, idx) => (
+                        <div key={idx} className="flex justify-between items-center bg-slate-50 p-2 rounded text-sm border">
+                            <span><b>{sub.name}</b> = {sub.value} {formData.unit}</span>
+                            <button onClick={() => removeSubUnit(idx)} className="text-red-400 hover:text-red-600"><Ban className="w-3 h-3" /></button>
+                        </div>
+                    ))}
+                </div>
               </div>
-              <div>
-                <label className="text-xs font-bold">Stock</label>
-                <input
-                  type="number"
-                  className="w-full p-2 border rounded"
-                  value={formData.quantity}
-                  onChange={(e) =>
-                    setFormData({ ...formData, quantity: e.target.value })
-                  }
-                />
-              </div>
-              <div>
-                <label className="text-xs font-bold text-blue-600">MOQ</label>
-                <input
-                  type="number"
-                  className="w-full p-2 border border-blue-200 rounded"
-                  value={formData.threshold}
-                  onChange={(e) =>
-                    setFormData({ ...formData, threshold: e.target.value })
-                  }
-                />
-              </div>
-              <div>
-                <label className="text-xs font-bold">Cost</label>
-                <input
-                  type="number"
-                  className="w-full p-2 border rounded"
-                  value={formData.cost}
-                  onChange={(e) =>
-                    setFormData({ ...formData, cost: e.target.value })
-                  }
-                />
-              </div>
-              <div className="flex gap-1 col-span-2 md:col-span-1">
-                <button
-                  onClick={handleSaveItem}
-                  className="bg-green-600 text-white p-2 rounded flex-1"
-                >
-                  <Save className="w-4 h-4 mx-auto" />
-                </button>
-                <button
-                  onClick={() => setIsFormOpen(false)}
-                  className="bg-slate-300 p-2 rounded"
-                >
-                  <Ban className="w-4 h-4 mx-auto" />
-                </button>
-              </div>
+            </div>
+            <div className="flex gap-2 mt-6 justify-end">
+                <button onClick={() => setIsFormOpen(false)} className="px-4 py-2 rounded text-slate-500 hover:bg-slate-200">Cancel</button>
+                <button onClick={handleSaveItem} className="bg-green-600 text-white px-6 py-2 rounded font-bold shadow-lg hover:bg-green-700">Save Item</button>
             </div>
           </Card>
         )}
@@ -688,40 +434,23 @@ export default function RestaurantInventoryApp() {
             <thead className="bg-slate-50 text-slate-500">
               <tr>
                 <th className="p-3">Name</th>
-                <th className="p-3">Unit</th>
                 <th className="p-3">Stock</th>
                 <th className="p-3">MOQ</th>
-                <th className="p-3">Cost</th>
                 <th className="p-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
               {inventory.map((item) => (
                 <tr key={item.id} className="border-b hover:bg-slate-50">
-                  <td className="p-3 font-medium">{item.name}</td>
-                  <td className="p-3 text-slate-500">{item.unit}</td>
-                  <td className="p-3 font-bold">{item.quantity}</td>
+                  <td className="p-3 font-medium">
+                    {item.name}
+                    {item.subUnits?.length > 0 && <span className="ml-2 text-[10px] bg-blue-100 text-blue-600 px-1 rounded border border-blue-200">Smart Count</span>}
+                  </td>
+                  <td className="p-3 font-bold">{item.quantity} <span className="text-xs font-normal text-slate-500">{item.unit}</span></td>
                   <td className="p-3">{item.threshold}</td>
-                  <td className="p-3">{item.cost}</td>
-                  <td className="p-3 text-right">
-                    <button
-                      onClick={() => {
-                        setFormData(item);
-                        setEditingId(item.id);
-                        setIsFormOpen(true);
-                      }}
-                      className="text-blue-500 p-1"
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </button>
-                    {userRole === 'owner' && (
-                      <button
-                        onClick={() => handleDeleteClick(item)}
-                        className="text-red-500 p-1"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
+                  <td className="p-3 text-right flex justify-end gap-2">
+                    <button onClick={() => { setFormData({...item, subUnits: item.subUnits || []}); setEditingId(item.id); setIsFormOpen(true); }} className="text-blue-500 hover:bg-blue-50 p-1 rounded"><Edit2 className="w-4 h-4" /></button>
+                    {userRole === 'owner' && <button onClick={() => handleDeleteClick(item)} className="text-red-500 hover:bg-red-50 p-1 rounded"><Trash2 className="w-4 h-4" /></button>}
                   </td>
                 </tr>
               ))}
@@ -732,7 +461,6 @@ export default function RestaurantInventoryApp() {
     );
   };
 
-  
   // --- NEW: RECEIVING MODULE (CART STYLE) ---
   const StockReceiveView = () => {
     const [selectedId, setSelectedId] = useState('');
@@ -831,6 +559,7 @@ export default function RestaurantInventoryApp() {
         </div>
     );
   };
+
 
   // --- 4. Recipes (Updated with Search Bar) ---
   const RecipesView = () => {
@@ -1371,6 +1100,7 @@ export default function RestaurantInventoryApp() {
                         {i.quantity} {i.unit}
                       </td>
                       <td className="p-2">
+                        {/* ⚠️ NOTE: This StockCountView needs updating to use the SmartCounter component */}
                         <input
                           type="number"
                           className="border w-24 p-1 rounded text-center"
