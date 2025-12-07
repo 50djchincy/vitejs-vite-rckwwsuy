@@ -11,28 +11,21 @@ import {
   AlertTriangle,
   Search,
   ChevronRight,
-  ArrowDown,
-  History,
-  FileText,
-  CheckCircle,
-  FileUp,
-  X,
-  ListFilter,
-  Save,
-  Ban,
-  BarChart3,
-  Printer,
   ShoppingCart,
-  Cloud,
   LogOut,
   User,
   Users,
-  Lock,
   Shield,
   ShieldCheck,
   Loader2,
-  Hash,            // For Smart Counting options
-  ArrowDownCircle  // For Stock Receiving
+  Printer,
+  FileUp,
+  Save,
+  Ban,
+  BarChart3,
+  Hash, // For Counting options icon
+  ArrowDownCircle, // For Stock Receiving
+  FileText, ArrowDown, History, X // Added for completeness based on old imports
 } from 'lucide-react';
 
 import { initializeApp, getApps, getApp } from 'firebase/app';
@@ -61,7 +54,6 @@ import {
 } from 'firebase/firestore';
 
 // --- CONFIGURATION ---
-// ⚠️ YOUR KEYS ARE PRESERVED HERE
 const firebaseConfig = {
   apiKey: 'AIzaSyBI0XhRV9aSivFBnEMoFgLqux1WfMvn0sQ',
   authDomain: 'mozzinvent.firebaseapp.com',
@@ -160,14 +152,13 @@ const AuthScreen = () => {
   );
 };
 
-// --- SUB-COMPONENT: SMART COUNTER ---
+// --- SUB-COMPONENT: SMART COUNTER (Calculates Blocks + Packs) ---
 const SmartCounter = ({ item, onCountChange }) => {
   const [subCounts, setSubCounts] = useState({});
   const [baseCount, setBaseCount] = useState('');
 
   useEffect(() => {
     let total = Number(baseCount) || 0;
-    // Safety check for undefined subUnits
     if (item?.subUnits && Array.isArray(item.subUnits)) {
       item.subUnits.forEach(sub => {
         const qty = Number(subCounts[sub.name]) || 0;
@@ -559,7 +550,6 @@ export default function RestaurantInventoryApp() {
         </div>
     );
   };
-
 
   // --- 4. Recipes (Updated with Search Bar) ---
   const RecipesView = () => {
